@@ -40,6 +40,8 @@ cd backend
 2. Download dependencies:
 ```bash
 go mod download
+
+go mod tidy
 ```
 
 ## Running the Server
