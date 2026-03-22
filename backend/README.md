@@ -6,13 +6,14 @@ A powerful HTTP server built with Go and the Gin framework that provides URL val
 
 - RESTful API endpoints
 - URL validation for YouTube and Instagram
-- YouTube media streaming (video/audio) using yt-dlp
+- YouTube and Instagram media streaming (video/audio) using yt-dlp
 - Request logging middleware
 - Rate limiting protection
 - Structured JSON responses
 - Clean modular architecture
 - Client disconnect handling
 - Process timeout protection
+- Private content detection for Instagram
 
 ## Project Structure
 
@@ -143,10 +144,10 @@ Response:
 
 **GET** `/api/stream?url=<url>&format=<format>`
 
-Streams YouTube videos or audio directly without storing files on disk.
+Streams YouTube or Instagram videos/audio directly without storing files on disk.
 
 **Query Parameters:**
-- `url` (required): The YouTube URL to stream
+- `url` (required): The YouTube or Instagram URL to stream
 - `format` (required): Either `video` or `audio`
 
 **Response:**
@@ -162,9 +163,14 @@ Streams YouTube videos or audio directly without storing files on disk.
 
 **Examples:**
 
-Stream video:
+Stream YouTube video:
 ```bash
 curl "http://localhost:8080/api/stream?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ&format=video" -o video.mp4
+```
+
+Stream Instagram video:
+```bash
+curl "http://localhost:8080/api/stream?url=https://www.instagram.com/p/ABC123/&format=video" -o video.mp4
 ```
 
 Stream audio:
@@ -193,10 +199,24 @@ Invalid format (400):
 }
 ```
 
-Non-YouTube URL (400):
+Unsupported URL (400):
 ```json
 {
-  "error": "Only valid YouTube URLs are supported"
+  "error": "Only YouTube and Instagram URLs are supported"
+}
+```
+
+Private content (403):
+```json
+{
+  "error": "This content is private or requires login"
+}
+```
+
+Content unavailable (404):
+```json
+{
+  "error": "Content not found or unavailable"
 }
 ```
 
@@ -282,11 +302,20 @@ curl "http://localhost:8080/api/stream?url=https://www.youtube.com/watch?v=dQw4w
 
 ### Media Streaming
 - The `/api/stream` endpoint requires yt-dlp to be installed on the system
-- Video streaming uses the best available format from YouTube
+- Video streaming uses the best available format from YouTube or Instagram
 - Audio streaming extracts and converts to MP3 format
 - No files are stored on disk - everything streams directly to the client
 - Each streaming request has a 3-minute timeout to prevent hanging connections
 - If the client disconnects, the yt-dlp process is automatically terminated
+- Instagram private posts are detected early and return 403 error
+- Unavailable content is detected and returns 404 error
+
+### Instagram Support
+- Supports public Instagram posts (photos and videos)
+- Supports Instagram Reels
+- Private or login-required content returns appropriate error
+- Uses yt-dlp's Instagram extractor (no additional dependencies needed)
+- Same streaming approach as YouTube - no disk storage
 
 ### Performance Considerations
 - Media streaming is resource-intensive and may consume significant bandwidth
@@ -294,10 +323,11 @@ curl "http://localhost:8080/api/stream?url=https://www.youtube.com/watch?v=dQw4w
 - Monitor server resources when handling multiple concurrent streaming requests
 
 ### Security
-- Only YouTube URLs are accepted for streaming
+- Only YouTube and Instagram URLs are accepted for streaming
 - URL validation is performed before initiating any yt-dlp process
 - Process timeouts prevent indefinite resource consumption
 - Client disconnect detection ensures proper cleanup
+- Private content detection prevents unauthorized access attempts
 
 ## License
 

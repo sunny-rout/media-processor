@@ -65,16 +65,35 @@ func StreamMedia(c *gin.Context) {
 	}
 
 	result := utils.ValidateURL(urlParam)
-	if !result.Valid || result.Platform != "youtube" {
+	if !result.Valid {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Only valid YouTube URLs are supported",
+			"error": "Invalid URL format",
 		})
 		return
 	}
 
-	// Get video title for filename
+	if result.Platform != "youtube" && result.Platform != "instagram" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Only YouTube and Instagram URLs are supported",
+		})
+		return
+	}
+
+	// Get video title for filename and validate accessibility
 	title, err := getVideoTitle(urlParam)
 	if err != nil {
+		errStr := err.Error()
+		if strings.Contains(errStr, "private") || strings.Contains(errStr, "login required") {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error": "This content is private or requires login",
+			})
+			return
+		} else if strings.Contains(errStr, "unavailable") || strings.Contains(errStr, "not available") {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "Content not found or unavailable",
+			})
+			return
+		}
 		log.Printf("Warning: could not get video title: %v", err)
 		title = "media"
 	}
@@ -90,12 +109,24 @@ func StreamMedia(c *gin.Context) {
 	defer cancel()
 
 	var cmd *exec.Cmd
+	var ytdlpArgs []string
 
-	if formatParam == "video" {
-		cmd = exec.CommandContext(ctx, "yt-dlp", "-f", "best", "-o", "-", urlParam)
+	if result.Platform == "instagram" {
+		ytdlpArgs = []string{"--no-check-certificates"}
+		if formatParam == "video" {
+			ytdlpArgs = append(ytdlpArgs, "-f", "best", "-o", "-", urlParam)
+		} else {
+			ytdlpArgs = append(ytdlpArgs, "-x", "--audio-format", "mp3", "-o", "-", urlParam)
+		}
 	} else {
-		cmd = exec.CommandContext(ctx, "yt-dlp", "-x", "--audio-format", "mp3", "-o", "-", urlParam)
+		if formatParam == "video" {
+			ytdlpArgs = []string{"-f", "best", "-o", "-", urlParam}
+		} else {
+			ytdlpArgs = []string{"-x", "--audio-format", "mp3", "-o", "-", urlParam}
+		}
 	}
+
+	cmd = exec.CommandContext(ctx, "yt-dlp", ytdlpArgs...)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -147,10 +178,17 @@ func StreamMedia(c *gin.Context) {
 
 	if err := cmd.Wait(); err != nil {
 		stderrOutput, _ := io.ReadAll(stderr)
-		log.Printf("yt-dlp error: %v, stderr: %s", err, string(stderrOutput))
+		stderrStr := string(stderrOutput)
+		log.Printf("yt-dlp error: %v, stderr: %s", err, stderrStr)
 
 		if ctx.Err() == context.DeadlineExceeded {
 			log.Println("Process timeout exceeded")
+		}
+
+		if strings.Contains(stderrStr, "private") || strings.Contains(stderrStr, "login required") {
+			log.Println("Private content detected")
+		} else if strings.Contains(stderrStr, "Video unavailable") || strings.Contains(stderrStr, "not available") {
+			log.Println("Content unavailable")
 		}
 	}
 
