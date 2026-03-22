@@ -1,6 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, FormEvent } from "react";
+
+const BACKEND_URL = "http://localhost:8080";
+
+const validateYouTubeUrl = (url: string): boolean => {
+  const patterns = [
+    /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/i,
+    /^(https?:\/\/)?(www\.)?youtube\.com\/watch\?v=.+$/i,
+    /^(https?:\/\/)?(www\.)?youtu\.be\/.+$/i,
+  ];
+  return patterns.some((pattern) => pattern.test(url));
+};
 
 export default function Home() {
   const [url, setUrl] = useState("");
@@ -8,9 +19,18 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleDownload = async () => {
-    if (!url.trim()) {
+  const handleDownload = async (e: FormEvent) => {
+    e.preventDefault();
+
+    const trimmedUrl = url.trim();
+
+    if (!trimmedUrl) {
       setError("Please enter a YouTube URL");
+      return;
+    }
+
+    if (!validateYouTubeUrl(trimmedUrl)) {
+      setError("Please enter a valid YouTube or Youtu.be URL");
       return;
     }
 
@@ -18,35 +38,54 @@ export default function Home() {
     setIsLoading(true);
 
     try {
-      const backendUrl = `http://localhost:8080/api/stream?url=${encodeURIComponent(url)}&format=${format}`;
+      const streamUrl = `${BACKEND_URL}/api/stream?url=${encodeURIComponent(trimmedUrl)}&format=${format}`;
 
-      const response = await fetch(backendUrl);
+      const response = await fetch(streamUrl, {
+        method: "GET",
+        headers: {
+          "Accept": "application/octet-stream",
+        },
+      });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to download media");
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Failed to download media");
+        }
+        throw new Error(`Server error: ${response.status}`);
       }
 
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = downloadUrl;
-      a.download = format === "video" ? "media.mp4" : "media.mp3";
-      document.body.appendChild(a);
-      a.click();
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = format === "video" ? "video.mp4" : "audio.mp3";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
       window.URL.revokeObjectURL(downloadUrl);
-      document.body.removeChild(a);
 
       setUrl("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      if (err instanceof TypeError && err.message.includes("fetch")) {
+        setError("Cannot connect to backend. Make sure the server is running on port 8080");
+      } else {
+        setError(err instanceof Error ? err.message : "An unexpected error occurred");
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && !isLoading) {
+      handleDownload(e as unknown as FormEvent);
+    }
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 px-4 py-8">
       <div className="w-full max-w-md">
         <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-8 space-y-6">
           <div className="text-center space-y-2">
@@ -58,7 +97,7 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="space-y-4">
+          <form onSubmit={handleDownload} className="space-y-4">
             <div>
               <label
                 htmlFor="url"
@@ -70,10 +109,15 @@ export default function Home() {
                 id="url"
                 type="text"
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
+                onChange={(e) => {
+                  setUrl(e.target.value);
+                  if (error) setError("");
+                }}
+                onKeyPress={handleKeyPress}
                 placeholder="https://www.youtube.com/watch?v=..."
                 className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent transition"
                 disabled={isLoading}
+                autoComplete="off"
               />
             </div>
 
@@ -105,8 +149,8 @@ export default function Home() {
             )}
 
             <button
-              onClick={handleDownload}
-              disabled={isLoading}
+              type="submit"
+              disabled={isLoading || !url.trim()}
               className="w-full py-3 px-6 rounded-lg bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
             >
               {isLoading ? (
@@ -124,12 +168,12 @@ export default function Home() {
                       r="10"
                       stroke="currentColor"
                       strokeWidth="4"
-                    ></circle>
+                    />
                     <path
                       className="opacity-75"
                       fill="currentColor"
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
+                    />
                   </svg>
                   <span>Processing...</span>
                 </>
@@ -152,7 +196,7 @@ export default function Home() {
                 </>
               )}
             </button>
-          </div>
+          </form>
 
           <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
             <p className="text-xs text-center text-slate-500 dark:text-slate-400">
