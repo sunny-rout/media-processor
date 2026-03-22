@@ -4,13 +4,33 @@ import { useState, FormEvent } from "react";
 
 const BACKEND_URL = "http://localhost:8080";
 
-const validateYouTubeUrl = (url: string): boolean => {
-  const patterns = [
+type Platform = "youtube" | "instagram" | "unknown";
+
+const detectPlatform = (url: string): Platform => {
+  const youtubePatterns = [
     /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/i,
     /^(https?:\/\/)?(www\.)?youtube\.com\/watch\?v=.+$/i,
     /^(https?:\/\/)?(www\.)?youtu\.be\/.+$/i,
   ];
-  return patterns.some((pattern) => pattern.test(url));
+
+  const instagramPatterns = [
+    /^(https?:\/\/)?(www\.)?instagram\.com\/.+$/i,
+  ];
+
+  if (youtubePatterns.some((pattern) => pattern.test(url))) {
+    return "youtube";
+  }
+
+  if (instagramPatterns.some((pattern) => pattern.test(url))) {
+    return "instagram";
+  }
+
+  return "unknown";
+};
+
+const validateUrl = (url: string): boolean => {
+  const platform = detectPlatform(url);
+  return platform === "youtube" || platform === "instagram";
 };
 
 export default function Home() {
@@ -20,18 +40,20 @@ export default function Home() {
   const [error, setError] = useState("");
   const [downloadProgress, setDownloadProgress] = useState(0);
 
+  const detectedPlatform = url.trim() ? detectPlatform(url.trim()) : "unknown";
+
   const handleDownload = async (e: FormEvent) => {
     e.preventDefault();
 
     const trimmedUrl = url.trim();
 
     if (!trimmedUrl) {
-      setError("Please enter a YouTube URL");
+      setError("Please enter a URL");
       return;
     }
 
-    if (!validateYouTubeUrl(trimmedUrl)) {
-      setError("Please enter a valid YouTube or Youtu.be URL");
+    if (!validateUrl(trimmedUrl)) {
+      setError("Please enter a valid YouTube or Instagram URL");
       return;
     }
 
@@ -52,6 +74,11 @@ export default function Home() {
         const contentType = response.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
           const errorData = await response.json();
+          if (response.status === 403) {
+            throw new Error(errorData.error || "Content is private or requires login");
+          } else if (response.status === 404) {
+            throw new Error(errorData.error || "Content not found or unavailable");
+          }
           throw new Error(errorData.error || "Failed to download media");
         }
         throw new Error(`Server error: ${response.status}`);
@@ -121,10 +148,10 @@ export default function Home() {
         <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-8 space-y-6">
           <div className="text-center space-y-2">
             <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
-              YouTube Downloader
+              Media Downloader
             </h1>
             <p className="text-slate-600 dark:text-slate-400">
-              Download videos and audio from YouTube
+              Download videos and audio from YouTube and Instagram
             </p>
           </div>
 
@@ -134,7 +161,7 @@ export default function Home() {
                 htmlFor="url"
                 className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2"
               >
-                YouTube URL
+                Video URL
               </label>
               <input
                 id="url"
@@ -145,11 +172,17 @@ export default function Home() {
                   if (error) setError("");
                 }}
                 onKeyPress={handleKeyPress}
-                placeholder="https://www.youtube.com/watch?v=..."
+                placeholder="Paste YouTube or Instagram URL..."
                 className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent transition"
                 disabled={isLoading}
                 autoComplete="off"
               />
+              {detectedPlatform !== "unknown" && (
+                <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                  Detected: {detectedPlatform === "youtube" ? "YouTube" : "Instagram"}
+                  {detectedPlatform === "instagram" && " (public posts only)"}
+                </p>
+              )}
             </div>
 
             <div>
@@ -246,7 +279,7 @@ export default function Home() {
 
           <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
             <p className="text-xs text-center text-slate-500 dark:text-slate-400">
-              Supports YouTube and Youtu.be links
+              Supports YouTube and Instagram links
             </p>
           </div>
         </div>

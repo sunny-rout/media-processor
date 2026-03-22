@@ -1,6 +1,6 @@
-# YouTube Downloader
+# Media Downloader
 
-A full-stack application for downloading YouTube videos and audio. Built with a Go backend using Gin and yt-dlp, and a Next.js frontend with TailwindCSS.
+A full-stack application for downloading YouTube and Instagram videos and audio. Built with a Go backend using Gin and yt-dlp, and a Next.js frontend with TailwindCSS.
 
 ## Project Structure
 
@@ -33,9 +33,10 @@ A full-stack application for downloading YouTube videos and audio. Built with a 
 ### Frontend
 - Clean, minimal UI with TailwindCSS
 - Real-time download streaming
-- YouTube URL validation
+- YouTube and Instagram URL validation
+- Platform detection with visual feedback
 - Format selection (Video/Audio)
-- Loading indicators
+- Loading indicators with progress tracking
 - Comprehensive error handling
 - Dark mode support
 
@@ -92,12 +93,17 @@ Frontend will start on `http://localhost:3000`
 ## Usage
 
 1. Open `http://localhost:3000` in your browser
-2. Enter a YouTube URL (e.g., `https://www.youtube.com/watch?v=...`)
-3. Select format:
+2. Enter a YouTube or Instagram URL:
+   - YouTube: `https://www.youtube.com/watch?v=...`
+   - Instagram: `https://www.instagram.com/p/...` or `https://www.instagram.com/reel/...`
+3. The platform will be automatically detected
+4. Select format:
    - **Video** - Downloads as MP4
-   - **Audio** - Downloads as MP3
-4. Click **Download** button
-5. File will be saved to your downloads folder
+   - **Audio** - Downloads as MP3 (extracted)
+5. Click **Download** button
+6. File will be saved to your downloads folder
+
+**Note**: Instagram posts must be public. Private content will return an error.
 
 ## API Endpoints
 
@@ -122,24 +128,28 @@ GET /api/stream?url=<url>&format=video|audio
 
 ### Download Flow
 
-1. **User Input**: User enters YouTube URL and selects format
-2. **Validation**: Frontend validates URL format
-3. **API Request**: Frontend sends GET request to backend `/api/stream`
-4. **Backend Processing**:
-   - Backend validates URL
-   - Spawns yt-dlp process
+1. **User Input**: User enters YouTube or Instagram URL and selects format
+2. **Platform Detection**: Frontend detects platform and shows appropriate feedback
+3. **Validation**: Frontend validates URL format for supported platforms
+4. **API Request**: Frontend sends GET request to backend `/api/stream`
+5. **Backend Processing**:
+   - Backend validates URL and checks accessibility
+   - Spawns yt-dlp process with platform-specific options
    - Streams output directly to response
-5. **Frontend Download**:
-   - Receives blob stream
+6. **Frontend Download**:
+   - Receives blob stream with progress tracking
    - Creates download link
    - Triggers browser download
-6. **Cleanup**: Both frontend and backend clean up resources
+7. **Cleanup**: Both frontend and backend clean up resources
 
 ### Error Handling
 
 The application handles:
 - Empty URL input
-- Invalid YouTube URLs
+- Invalid YouTube or Instagram URLs
+- Unsupported platforms
+- Private Instagram content (403)
+- Unavailable content (404)
 - Backend connection failures
 - yt-dlp processing errors
 - Network timeouts
@@ -205,7 +215,9 @@ const BACKEND_URL = "http://localhost:8080";  // Change URL here
 ### Downloads fail
 - Ensure yt-dlp is up to date: `pip install -U yt-dlp`
 - Check backend logs for errors
-- Verify YouTube URL is valid and accessible
+- Verify URL is valid and accessible
+- For Instagram: Ensure the post is public (not private)
+- Try the URL directly in yt-dlp: `yt-dlp <url>`
 
 ## License
 
