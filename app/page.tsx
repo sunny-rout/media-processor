@@ -18,6 +18,7 @@ export default function Home() {
   const [format, setFormat] = useState<"video" | "audio">("video");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [downloadProgress, setDownloadProgress] = useState(0);
 
   const handleDownload = async (e: FormEvent) => {
     e.preventDefault();
@@ -43,7 +44,7 @@ export default function Home() {
       const response = await fetch(streamUrl, {
         method: "GET",
         headers: {
-          "Accept": "application/octet-stream",
+          "Accept": format === "video" ? "video/mp4" : "audio/mpeg",
         },
       });
 
@@ -56,18 +57,48 @@ export default function Home() {
         throw new Error(`Server error: ${response.status}`);
       }
 
-      const blob = await response.blob();
+      const contentLength = response.headers.get("Content-Length");
+      const total = contentLength ? parseInt(contentLength, 10) : 0;
+      const contentDisposition = response.headers.get("Content-Disposition");
+      const filenameMatch = contentDisposition?.match(/filename="(.+)"/);
+      const filename = filenameMatch ? filenameMatch[1] : (format === "video" ? "video.mp4" : "audio.mp3");
+
+      if (!response.body) {
+        throw new Error("Streaming not supported in this browser");
+      }
+
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let received = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        if (total > 0) {
+          const progress = Math.round((received / total) * 100);
+          setDownloadProgress(progress);
+        }
+      }
+
+      const blob = new Blob(chunks, {
+        type: format === "video" ? "video/mp4" : "audio/mpeg",
+      });
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = downloadUrl;
-      link.download = format === "video" ? "video.mp4" : "audio.mp3";
+      link.download = filename;
+      setDownloadProgress(0);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(downloadUrl);
 
       setUrl("");
+      setDownloadProgress(0);
     } catch (err) {
+      setDownloadProgress(0);
       if (err instanceof TypeError && err.message.includes("fetch")) {
         setError("Cannot connect to backend. Make sure the server is running on port 8080");
       } else {
@@ -140,6 +171,21 @@ export default function Home() {
               </select>
             </div>
 
+            {downloadProgress > 0 && (
+              <div className="w-full">
+                <div className="flex justify-between text-sm text-slate-600 dark:text-slate-400 mb-1">
+                  <span>Downloading...</span>
+                  <span>{downloadProgress}%</span>
+                </div>
+                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                  <div
+                    className="bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${downloadProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
             {error && (
               <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
                 <p className="text-sm text-red-600 dark:text-red-400">
@@ -175,7 +221,7 @@ export default function Home() {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     />
                   </svg>
-                  <span>Processing...</span>
+                  <span>Processing... {downloadProgress > 0 ? `${downloadProgress}%` : ""}</span>
                 </>
               ) : (
                 <>

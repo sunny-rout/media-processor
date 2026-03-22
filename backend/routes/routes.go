@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -17,6 +18,17 @@ func HealthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status": "ok",
 	})
+}
+
+func getContentType(format string) string {
+	switch format {
+	case "video":
+		return "video/mp4"
+	case "audio":
+		return "audio/mpeg"
+	default:
+		return "application/octet-stream"
+	}
 }
 
 func ValidateURL(c *gin.Context) {
@@ -60,18 +72,29 @@ func StreamMedia(c *gin.Context) {
 		return
 	}
 
+	// Get video title for filename
+	title, err := getVideoTitle(urlParam)
+	if err != nil {
+		log.Printf("Warning: could not get video title: %v", err)
+		title = "media"
+	}
+
+	filename := sanitizeFilename(title)
+	if formatParam == "audio" {
+		filename += ".mp3"
+	} else {
+		filename += ".mp4"
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
 	var cmd *exec.Cmd
-	var filename string
 
 	if formatParam == "video" {
 		cmd = exec.CommandContext(ctx, "yt-dlp", "-f", "best", "-o", "-", urlParam)
-		filename = "media.mp4"
 	} else {
 		cmd = exec.CommandContext(ctx, "yt-dlp", "-x", "--audio-format", "mp3", "-o", "-", urlParam)
-		filename = "media.mp3"
 	}
 
 	stdout, err := cmd.StdoutPipe()
@@ -108,8 +131,10 @@ func StreamMedia(c *gin.Context) {
 	}()
 
 	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-	c.Header("Content-Type", "application/octet-stream")
+	c.Header("Content-Type", getContentType(formatParam))
+	c.Header("X-Content-Type-Options", "nosniff")
 	c.Header("Transfer-Encoding", "chunked")
+	c.Header("Cache-Control", "no-cache")
 
 	c.Stream(func(w io.Writer) bool {
 		_, err := io.Copy(w, stdout)
@@ -130,4 +155,33 @@ func StreamMedia(c *gin.Context) {
 	}
 
 	log.Printf("Successfully streamed %s for URL: %s", formatParam, urlParam)
+}
+
+func getVideoTitle(url string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "yt-dlp", "--get-title", url)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(string(output)), nil
+}
+
+func sanitizeFilename(name string) string {
+	// Remove characters that are unsafe for filenames
+	replacer := strings.NewReplacer(
+		"/", "_",
+		"\\", "_",
+		":", "_",
+		"*", "_",
+		"?", "_",
+		"\"", "_",
+		"<", "_",
+		">", "_",
+		"|", "_",
+	)
+	return replacer.Replace(name)
 }

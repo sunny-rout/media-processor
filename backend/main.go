@@ -14,6 +14,7 @@ func main() {
 	router.Use(gin.Recovery())
 	router.Use(middleware.Logger())
 	router.Use(middleware.RateLimiter())
+	router.Use(middleware.CORS())
 
 	router.GET("/health", routes.HealthCheck)
 
