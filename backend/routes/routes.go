@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -26,6 +27,8 @@ func getContentType(format string) string {
 		return "video/mp4"
 	case "audio":
 		return "audio/mpeg"
+	case "image":
+		return "image/jpeg"
 	default:
 		return "application/octet-stream"
 	}
@@ -57,9 +60,9 @@ func StreamMedia(c *gin.Context) {
 		return
 	}
 
-	if formatParam != "video" && formatParam != "audio" {
+	if formatParam != "video" && formatParam != "audio" && formatParam != "image" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "format parameter must be 'video' or 'audio'",
+			"error": "format parameter must be 'video', 'audio', or 'image'",
 		})
 		return
 	}
@@ -76,6 +79,11 @@ func StreamMedia(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Only YouTube and Instagram URLs are supported",
 		})
+		return
+	}
+
+	if result.Platform == "instagram" && formatParam == "image" {
+		handleInstagramImageStream(c, urlParam)
 		return
 	}
 
@@ -222,4 +230,117 @@ func sanitizeFilename(name string) string {
 		"|", "_",
 	)
 	return replacer.Replace(name)
+}
+
+func handleInstagramImageStream(c *gin.Context, url string) {
+	imageURL, err := extractInstagramImageURL(url)
+	if err != nil {
+		log.Printf("Error extracting Instagram image URL: %v", err)
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "Failed to extract image from Instagram post",
+		})
+		return
+	}
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	req, err := http.NewRequest("GET", imageURL, nil)
+	if err != nil {
+		log.Printf("Error creating image request: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to download image",
+		})
+		return
+	}
+
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Error downloading image: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to download image",
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Image download failed with status: %d", resp.StatusCode)
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "Image not found or unavailable",
+		})
+		return
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "image/jpeg"
+	}
+
+	c.Header("Content-Type", contentType)
+	c.Header("Content-Disposition", `attachment; filename="instagram_image.jpg"`)
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("Cache-Control", "no-cache")
+
+	if resp.ContentLength > 0 {
+		c.Header("Content-Length", fmt.Sprintf("%d", resp.ContentLength))
+	}
+
+	_, err = io.Copy(c.Writer, resp.Body)
+	if err != nil {
+		log.Printf("Error streaming image: %v", err)
+		return
+	}
+
+	log.Printf("Successfully streamed Instagram image for URL: %s", url)
+}
+
+func extractInstagramImageURL(url string) (string, error) {
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return nil
+		},
+	}
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch page: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("page returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	ogImageRegex := regexp.MustCompile(`<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']`)
+	matches := ogImageRegex.FindSubmatch(body)
+
+	if len(matches) < 2 {
+		return "", fmt.Errorf("could not find og:image meta tag")
+	}
+
+	imageURL := string(matches[1])
+	if imageURL == "" {
+		return "", fmt.Errorf("empty image URL")
+	}
+
+	log.Printf("Extracted image URL: %s", imageURL)
+	return imageURL, nil
 }
