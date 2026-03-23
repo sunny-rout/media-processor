@@ -35,12 +35,24 @@ const validateUrl = (url: string): boolean => {
 
 export default function Home() {
   const [url, setUrl] = useState("");
-  const [format, setFormat] = useState<"video" | "audio">("video");
+  const [format, setFormat] = useState<"video" | "audio" | "image">("video");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [downloadProgress, setDownloadProgress] = useState(0);
 
   const detectedPlatform = url.trim() ? detectPlatform(url.trim()) : "unknown";
+
+  const handleUrlChange = (newUrl: string) => {
+    setUrl(newUrl);
+    if (error) setError("");
+
+    const platform = detectPlatform(newUrl.trim());
+    if (platform === "instagram" && format === "video") {
+      setFormat("image");
+    } else if (platform === "youtube" && format === "image") {
+      setFormat("video");
+    }
+  };
 
   const handleDownload = async (e: FormEvent) => {
     e.preventDefault();
@@ -63,10 +75,15 @@ export default function Home() {
     try {
       const streamUrl = `${BACKEND_URL}/api/stream?url=${encodeURIComponent(trimmedUrl)}&format=${format}`;
 
+      const acceptHeader =
+        format === "video" ? "video/mp4" :
+        format === "audio" ? "audio/mpeg" :
+        "image/jpeg,image/png";
+
       const response = await fetch(streamUrl, {
         method: "GET",
         headers: {
-          "Accept": format === "video" ? "video/mp4" : "audio/mpeg",
+          "Accept": acceptHeader,
         },
       });
 
@@ -88,7 +105,12 @@ export default function Home() {
       const total = contentLength ? parseInt(contentLength, 10) : 0;
       const contentDisposition = response.headers.get("Content-Disposition");
       const filenameMatch = contentDisposition?.match(/filename="(.+)"/);
-      const filename = filenameMatch ? filenameMatch[1] : (format === "video" ? "video.mp4" : "audio.mp3");
+
+      let defaultFilename = "video.mp4";
+      if (format === "audio") defaultFilename = "audio.mp3";
+      else if (format === "image") defaultFilename = "image.jpg";
+
+      const filename = filenameMatch ? filenameMatch[1] : defaultFilename;
 
       if (!response.body) {
         throw new Error("Streaming not supported in this browser");
@@ -109,9 +131,12 @@ export default function Home() {
         }
       }
 
-      const blob = new Blob(chunks, {
-        type: format === "video" ? "video/mp4" : "audio/mpeg",
-      });
+      const blobType =
+        format === "video" ? "video/mp4" :
+        format === "audio" ? "audio/mpeg" :
+        "image/jpeg";
+
+      const blob = new Blob(chunks, { type: blobType });
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = downloadUrl;
@@ -167,10 +192,7 @@ export default function Home() {
                 id="url"
                 type="text"
                 value={url}
-                onChange={(e) => {
-                  setUrl(e.target.value);
-                  if (error) setError("");
-                }}
+                onChange={(e) => handleUrlChange(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder="Paste YouTube or Instagram URL..."
                 className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent transition"
@@ -180,7 +202,7 @@ export default function Home() {
               {detectedPlatform !== "unknown" && (
                 <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
                   Detected: {detectedPlatform === "youtube" ? "YouTube" : "Instagram"}
-                  {detectedPlatform === "instagram" && " (public posts only)"}
+                  {detectedPlatform === "instagram" && " - Images and videos supported (public posts only)"}
                 </p>
               )}
             </div>
@@ -195,12 +217,21 @@ export default function Home() {
               <select
                 id="format"
                 value={format}
-                onChange={(e) => setFormat(e.target.value as "video" | "audio")}
+                onChange={(e) => setFormat(e.target.value as "video" | "audio" | "image")}
                 className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent transition cursor-pointer"
                 disabled={isLoading}
               >
-                <option value="video">Video (MP4)</option>
-                <option value="audio">Audio (MP3)</option>
+                {detectedPlatform === "instagram" ? (
+                  <>
+                    <option value="image">Image (JPG)</option>
+                    <option value="video">Video (MP4)</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="video">Video (MP4)</option>
+                    <option value="audio">Audio (MP3)</option>
+                  </>
+                )}
               </select>
             </div>
 
