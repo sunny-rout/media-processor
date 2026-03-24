@@ -206,6 +206,77 @@ const BACKEND_URL = "http://localhost:8080";  // Change URL here
 - TailwindCSS 3.4+
 - TypeScript 5
 
+## Monitoring with Prometheus + Grafana
+
+### Prerequisites
+- Docker and Docker Compose installed
+
+### Step 1: Install Prometheus client for Go
+
+```bash
+cd backend
+go get github.com/prometheus/client_golang/prometheus
+go get github.com/prometheus/client_golang/prometheus/promhttp
+```
+
+### Step 2: Start Prometheus and Grafana
+
+```bash
+docker-compose up -d
+```
+
+### Step 3: Access Services
+
+| Service | URL | Default Credentials |
+|---------|-----|---------------------|
+| Prometheus | http://localhost:9090 | - |
+| Grafana | http://localhost:3001 | admin / admin |
+
+### Step 4: Verify Prometheus is Scraping
+
+1. Open http://localhost:9090
+2. Go to **Status > Targets**
+3. Confirm `media-processor` target shows `UP`
+
+### Step 5: View Dashboards in Grafana
+
+1. Open http://localhost:3001 and login
+2. Go to **Dashboards > Manage**
+3. Open the **Media Processor** dashboard
+
+### Available Metrics
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `app_uptime_seconds` | Gauge | Application uptime in seconds |
+| `stream_started_total` | Counter | Total streams started |
+| `stream_success_total` | Counter | Total successful streams |
+| `stream_errors_total` | Counter | Total errors by type (pool_full, private, unavailable, process, timeout) |
+| `stream_duration_seconds` | Histogram | Stream duration buckets |
+| `worker_pool_size` | Gauge | Current worker pool size |
+
+### Stop Monitoring
+
+```bash
+docker-compose down
+```
+
+## Redis
+
+Redis is used for rate limiting. It runs automatically in Docker.
+
+| Setting | Value |
+|---------|-------|
+| Host | localhost (outside Docker) |
+| Container | redis:6379 (inside Docker) |
+| Persistence | AOF enabled |
+
+**Environment variable:**
+```bash
+REDIS_URL=redis://redis:6379  # Docker
+REDIS_URL=redis://localhost:6379  # Local
+```
+
 ## Troubleshooting
 
 ### Backend won't start

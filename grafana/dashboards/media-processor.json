@@ -1,0 +1,43 @@
+{
+  "dashboard": {
+    "title": "Media Processor",
+    "uid": "media-processor",
+    "panels": [
+      {
+        "title": "Uptime",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+        "targets": [{"expr": "app_uptime_seconds", "legendFormat": "Uptime"}],
+        "fieldConfig": {"defaults": {"unit": "s"}}
+      },
+      {
+        "title": "Streams Started",
+        "type": "stat",
+        "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+        "targets": [{"expr": "stream_started_total", "legendFormat": "Started"}]
+      },
+      {
+        "title": "Streams Succeeded",
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
+        "targets": [{"expr": "stream_success_total", "legendFormat": "Success"}]
+      },
+      {
+        "title": "Stream Errors",
+        "type": "timeseries",
+        "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
+        "targets": [
+          {"expr": "rate(stream_errors_total[5m])", "legendFormat": "{{type}}"}
+        ]
+      },
+      {
+        "title": "Stream Duration",
+        "type": "histogram",
+        "gridPos": {"x": 12, "y": 4, "w": 12, "h": 8},
+        "targets": [
+          {"expr": "stream_duration_seconds_bucket", "legendFormat": "{{le}}"}
+        ]
+      }
+    ]
+  }
+}

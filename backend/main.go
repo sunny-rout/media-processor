@@ -40,7 +40,7 @@ func main() {
 	router.Use(middleware.CORS())
 
 	router.GET("/health", routes.HealthCheck)
-	router.GET("/metrics", metrics.Handler)
+	router.GET("/metrics", metrics.Handler())
 
 	api := router.Group("/api")
 	{
